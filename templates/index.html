@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>仓内地图数据采集系统</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div id="app">
+    <!-- 顶部工具栏 -->
+    <header class="topbar">
+        <div class="logo">
+            <span class="logo-icon">🗺️</span>
+            <span class="logo-text">仓内地图数据采集系统</span>
+        </div>
+        <div class="topbar-actions">
+            <button class="btn btn-sm btn-primary" onclick="showImportModal()">导入配置</button>
+            <button class="btn btn-sm" onclick="saveToServer()">保存配置</button>
+            <button class="btn btn-sm" onclick="exportJSON()">导出JSON</button>
+            <button class="btn btn-sm btn-success" onclick="exportCSV('points')">导出点位</button>
+            <button class="btn btn-sm btn-success" onclick="exportCSV('lines')">导出动线</button>
+            <button class="btn btn-sm btn-success" onclick="exportCSV('paths')">导出路径</button>
+            <button class="btn btn-sm btn-info" onclick="exportSVG()">导出矢量图</button>
+            <button class="btn btn-sm btn-info" onclick="downloadDB()">下载数据库</button>
+            <button class="btn btn-sm btn-warn" onclick="showSettings()">⚙️ 设置</button>
+        </div>
+    </header>
+
+    <div class="main-layout">
+        <!-- 左侧工具面板 -->
+        <aside class="sidebar-left">
+            <div class="panel">
+                <div class="panel-header">操作模式</div>
+                <div class="panel-body">
+                    <div class="mode-buttons">
+                        <button class="mode-btn active" data-mode="add-point" onclick="setMode('add-point')">
+                            <span class="mode-icon">📍</span> 添加点位
+                        </button>
+                        <button class="mode-btn" data-mode="add-line" onclick="setMode('add-line')">
+                            <span class="mode-icon">📏</span> 连线动线
+                        </button>
+                        <button class="mode-btn" data-mode="move" onclick="setMode('move')">
+                            <span class="mode-icon">✋</span> 拖拽移动
+                        </button>
+                        <button class="mode-btn" data-mode="delete" onclick="setMode('delete')">
+                            <span class="mode-icon">🗑️</span> 删除元素
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel" id="point-type-panel">
+                <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <span>点位类型</span>
+                    <button class="btn btn-xs" onclick="showTypeManager()" style="text-transform:none">管理</button>
+                </div>
+                <div class="panel-body">
+                    <div id="point-type-list">
+                        <label class="type-option">
+                            <input type="radio" name="point-type" value="start" checked>
+                            <span class="type-badge type-start">出发点</span>
+                        </label>
+                        <label class="type-option">
+                            <input type="radio" name="point-type" value="end">
+                            <span class="type-badge type-end">终止点</span>
+                        </label>
+                        <label class="type-option">
+                            <input type="radio" name="point-type" value="pickup">
+                            <span class="type-badge type-pickup">取货点</span>
+                        </label>
+                        <label class="type-option">
+                            <input type="radio" name="point-type" value="intersection">
+                            <span class="type-badge type-intersection">岔路点</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">手动添加点位</div>
+                <div class="panel-body">
+                    <div class="form-row">
+                        <label>点位ID</label>
+                        <input type="text" id="manual-point-id" placeholder="如 P001">
+                    </div>
+                    <div class="form-row">
+                        <label>X 坐标</label>
+                        <input type="number" id="manual-point-x" placeholder="0" step="any">
+                    </div>
+                    <div class="form-row">
+                        <label>Y 坐标</label>
+                        <input type="number" id="manual-point-y" placeholder="0" step="any">
+                    </div>
+                    <button class="btn btn-sm btn-primary" onclick="addPointManual()">添加</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">通道批量生成</div>
+                <div class="panel-body">
+                    <div class="form-row">
+                        <label>起点ID</label>
+                        <div class="input-with-btn">
+                            <input type="text" id="aisle-start-id" placeholder="如 X1（已存在则复用）">
+                            <button class="btn btn-xs pick-btn" id="pick-start-btn" onclick="startAislePick('start')" title="点击地图拾取坐标">📍</button>
+                        </div>
+                    </div>
+                    <div class="form-row-inline">
+                        <div class="form-row" style="flex:1">
+                            <label>起点X</label>
+                            <input type="number" id="aisle-start-x" placeholder="0" step="any">
+                        </div>
+                        <div class="form-row" style="flex:1">
+                            <label>起点Y</label>
+                            <input type="number" id="aisle-start-y" placeholder="0" step="any">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label>起点类型</label>
+                        <select id="aisle-start-type" class="form-select">
+                            <option value="intersection">岔路点</option>
+                            <option value="start">出发点</option>
+                            <option value="end">终止点</option>
+                            <option value="pickup">取货点</option>
+                        </select>
+                    </div>
+                    <hr class="divider">
+                    <div class="form-row">
+                        <label>终点ID</label>
+                        <div class="input-with-btn">
+                            <input type="text" id="aisle-end-id" placeholder="如 X2（已存在则复用）">
+                            <button class="btn btn-xs pick-btn" id="pick-end-btn" onclick="startAislePick('end')" title="点击地图拾取坐标">📍</button>
+                        </div>
+                    </div>
+                    <div class="form-row-inline">
+                        <div class="form-row" style="flex:1">
+                            <label>终点X</label>
+                            <input type="number" id="aisle-end-x" placeholder="0" step="any">
+                        </div>
+                        <div class="form-row" style="flex:1">
+                            <label>终点Y</label>
+                            <input type="number" id="aisle-end-y" placeholder="0" step="any">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label>终点类型</label>
+                        <select id="aisle-end-type" class="form-select">
+                            <option value="intersection">岔路点</option>
+                            <option value="start">出发点</option>
+                            <option value="end">终止点</option>
+                            <option value="pickup">取货点</option>
+                        </select>
+                    </div>
+                    <hr class="divider">
+                    <div class="form-row-inline">
+                        <div class="form-row" style="flex:1">
+                            <label>货位数量</label>
+                            <input type="number" id="aisle-count" value="5" min="1" max="500">
+                        </div>
+                        <div class="form-row" style="flex:1">
+                            <label>ID前缀</label>
+                            <input type="text" id="aisle-prefix" value="A" maxlength="6">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label>货位类型</label>
+                        <select id="aisle-pickup-type" class="form-select">
+                            <option value="pickup">取货点</option>
+                        </select>
+                        <small class="form-hint">生成的所有中间货位将使用此类型（与起终点类型独立）</small>
+                    </div>
+                    <div class="form-row">
+                        <label class="checkbox-row">
+                            <input type="checkbox" id="aisle-auto-connect" checked>
+                            <span>自动创建动线（起点→货位→终点）</span>
+                        </label>
+                    </div>
+                    <button class="btn btn-sm btn-block btn-primary" onclick="generateAisle()">
+                        ⚡ 生成通道货位
+                    </button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">快捷操作</div>
+                <div class="panel-body">
+                    <button class="btn btn-sm btn-block" onclick="generateSample()">生成示例地图</button>
+                    <button class="btn btn-sm btn-block btn-danger" onclick="clearAll()">清空全部</button>
+                    <hr class="divider">
+                    <button class="btn btn-sm btn-block btn-primary" onclick="generatePaths()">
+                        🚀 生成 N×N 路径数据
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 中间画布 -->
+        <main class="canvas-area">
+            <div class="canvas-toolbar">
+                <span class="canvas-info">
+                    模式: <strong id="current-mode-text">添加点位</strong> |
+                    点位: <strong id="point-count">0</strong> |
+                    动线: <strong id="line-count">0</strong>
+                </span>
+                <div class="canvas-controls">
+                    <button class="btn btn-xs" onclick="zoomIn()">+</button>
+                    <button class="btn btn-xs" onclick="zoomOut()">−</button>
+                    <button class="btn btn-xs" onclick="resetView()">重置视图</button>
+                    <button class="btn btn-xs" onclick="toggleGrid()">网格</button>
+                    <button class="btn btn-xs" onclick="toggleLabels()">标签</button>
+                </div>
+            </div>
+            <div class="canvas-wrapper" id="canvas-wrapper">
+                <canvas id="map-canvas"></canvas>
+                <div class="coordinate-display" id="coord-display">X: 0, Y: 0</div>
+            </div>
+            <div class="canvas-hint" id="canvas-hint">点击画布添加点位（先选择点位类型）</div>
+        </main>
+
+        <!-- 右侧数据面板 -->
+        <aside class="sidebar-right">
+            <!-- Tab 切换 -->
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="points" onclick="switchTab('points')">点位列表</button>
+                <button class="tab-btn" data-tab="lines" onclick="switchTab('lines')">动线列表</button>
+                <button class="tab-btn" data-tab="paths" onclick="switchTab('paths')">路径数据</button>
+                <button class="tab-btn" data-tab="stats" onclick="switchTab('stats')">统计</button>
+            </div>
+
+            <!-- 点位列表 -->
+            <div class="tab-content active" id="tab-points">
+                <div class="tab-toolbar">
+                    <input type="text" class="search-input" id="point-search" placeholder="搜索点位ID..." oninput="renderPointList()">
+                    <span class="count-badge" id="point-list-count">0</span>
+                </div>
+                <div class="data-list" id="point-list"></div>
+            </div>
+
+            <!-- 动线列表 -->
+            <div class="tab-content" id="tab-lines">
+                <div class="tab-toolbar">
+                    <input type="text" class="search-input" id="line-search" placeholder="搜索动线..." oninput="renderLineList()">
+                    <span class="count-badge" id="line-list-count">0</span>
+                </div>
+                <div class="data-list" id="line-list"></div>
+            </div>
+
+            <!-- 路径数据 -->
+            <div class="tab-content" id="tab-paths">
+                <div class="tab-toolbar">
+                    <input type="text" class="search-input" id="path-search" placeholder="搜索起点/终点ID..." oninput="renderPathList()">
+                    <span class="count-badge" id="path-list-count">0</span>
+                </div>
+                <div class="data-list" id="path-list"></div>
+                <div class="pagination" id="path-pagination"></div>
+            </div>
+
+            <!-- 统计 -->
+            <div class="tab-content" id="tab-stats">
+                <div id="stats-content" class="stats-container">
+                    <p class="placeholder-text">点击「生成 N×N 路径数据」后查看统计</p>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<!-- 设置弹窗 -->
+<div class="modal-overlay" id="settings-modal" style="display:none">
+    <div class="modal">
+        <div class="modal-header">
+            <span>系统设置</span>
+            <button class="modal-close" onclick="hideSettings()">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row">
+                <label>仓内步行速度 (m/s)</label>
+                <input type="number" id="setting-walk-speed" step="0.1" value="1.2">
+                <small class="form-hint">默认 1.2 m/s，通行耗时 = 距离 ÷ 步行速度</small>
+            </div>
+            <div class="form-row">
+                <label>坐标比例 (米/像素)</label>
+                <input type="number" id="setting-scale" step="0.01" value="0.1">
+                <small class="form-hint">1 像素 = {比例 × 1000} 毫米。修改后自动重算所有动线和路径的通行耗时，距离显示以毫米为单位</small>
+            </div>
+            <div class="form-row">
+                <label>点位ID数字长度</label>
+                <input type="number" id="setting-id-length" step="1" min="1" max="10" value="6">
+                <small class="form-hint">自动生成的点位ID数字部分位数。例如 6 位 → P000001、A000001。影响画布点击添加和通道批量生成</small>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-sm" onclick="hideSettings()">取消</button>
+            <button class="btn btn-sm btn-primary" onclick="saveSettings()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 点位编辑弹窗 -->
+<div class="modal-overlay" id="edit-point-modal" style="display:none">
+    <div class="modal">
+        <div class="modal-header">
+            <span>编辑点位</span>
+            <button class="modal-close" onclick="closeEditPoint()">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row">
+                <label>点位ID</label>
+                <input type="text" id="edit-point-id">
+                <small class="form-hint">修改ID将自动更新关联的动线和路径数据</small>
+            </div>
+            <div class="form-row-inline">
+                <div class="form-row" style="flex:1">
+                    <label>X 坐标</label>
+                    <input type="number" id="edit-point-x" step="any">
+                </div>
+                <div class="form-row" style="flex:1">
+                    <label>Y 坐标</label>
+                    <input type="number" id="edit-point-y" step="any">
+                </div>
+            </div>
+            <div class="form-row">
+                <label>点位类型</label>
+                <select id="edit-point-type" class="form-select"></select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-sm" onclick="closeEditPoint()">取消</button>
+            <button class="btn btn-sm btn-primary" onclick="saveEditPoint()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 点位类型管理弹窗 -->
+<div class="modal-overlay" id="type-manager-modal" style="display:none">
+    <div class="modal" style="width:460px">
+        <div class="modal-header">
+            <span>点位类型管理</span>
+            <button class="modal-close" onclick="hideTypeManager()">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row">
+                <label>新增 / 编辑类型</label>
+                <div class="form-row-inline" style="margin-bottom:6px">
+                    <div class="form-row" style="flex:1">
+                        <label>标识 (英文)</label>
+                        <input type="text" id="new-type-key" placeholder="如 storage" style="font-family:var(--mono);font-size:12px">
+                    </div>
+                    <div class="form-row" style="flex:1">
+                        <label>名称</label>
+                        <input type="text" id="new-type-label" placeholder="如 存储区">
+                    </div>
+                </div>
+                <div class="form-row-inline">
+                    <div class="form-row" style="flex:1">
+                        <label>颜色</label>
+                        <input type="color" id="new-type-color" value="#5b8def" style="height:32px;padding:2px;cursor:pointer">
+                    </div>
+                    <div class="form-row" style="flex:1">
+                        <label>图标 (1-2字符)</label>
+                        <input type="text" id="new-type-icon" value="?" maxlength="2" style="text-align:center">
+                    </div>
+                </div>
+                <button class="btn btn-sm btn-primary btn-block" onclick="saveType()">保存类型</button>
+            </div>
+            <hr class="divider">
+            <label style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;display:block">已有类型</label>
+            <div id="type-manager-list" style="max-height:280px;overflow-y:auto"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-sm" onclick="hideTypeManager()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- SVG导出选项弹窗 -->
+<div class="modal-overlay" id="svg-export-modal" style="display:none">
+    <div class="modal" style="width:380px">
+        <div class="modal-header">
+            <span>导出矢量图选项</span>
+            <button class="modal-close" onclick="hideSVGExport()">×</button>
+        </div>
+        <div class="modal-body">
+            <label class="checkbox-row" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer">
+                <input type="checkbox" id="svg-transparent" onchange="onTransparentToggle()">
+                <span>透明背景（仅保留点和线）</span>
+            </label>
+            <label class="checkbox-row" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer">
+                <input type="checkbox" id="svg-labels" checked>
+                <span>显示标签（点位ID、坐标、距离）</span>
+            </label>
+            <label class="checkbox-row" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer">
+                <input type="checkbox" id="svg-grid" checked>
+                <span>显示网格和坐标轴</span>
+            </label>
+            <label class="checkbox-row" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer">
+                <input type="checkbox" id="svg-legend" checked>
+                <span>显示图例信息框</span>
+            </label>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-sm" onclick="hideSVGExport()">取消</button>
+            <button class="btn btn-sm btn-primary" onclick="doExportSVG()">导出</button>
+        </div>
+    </div>
+</div>
+
+<!-- 导入配置弹窗 -->
+<div class="modal-overlay" id="import-modal" style="display:none">
+    <div class="modal" style="width:440px">
+        <div class="modal-header">
+            <span>导入配置</span>
+            <button class="modal-close" onclick="hideImportModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row">
+                <label>选择 JSON 文件</label>
+                <div class="import-file-area" id="import-file-area" onclick="document.getElementById('import-file-input').click()">
+                    <input type="file" id="import-file-input" accept=".json" style="display:none" onchange="handleImportFile(this)">
+                    <div id="import-file-placeholder">
+                        <span style="font-size:28px;display:block;margin-bottom:6px">📁</span>
+                        <span style="color:var(--text-secondary);font-size:12px">点击选择 .json 配置文件</span>
+                    </div>
+                    <div id="import-file-info" style="display:none">
+                        <span id="import-file-name" style="font-weight:600;font-size:13px"></span>
+                        <span id="import-file-detail" style="display:block;color:var(--text-secondary);font-size:11px;margin-top:2px"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="form-row">
+                <label>导入模式</label>
+                <div class="import-mode-group">
+                    <label class="radio-row">
+                        <input type="radio" name="import-mode" value="replace" checked>
+                        <span><strong>覆盖导入</strong> — 清空当前数据后导入</span>
+                    </label>
+                    <label class="radio-row">
+                        <input type="radio" name="import-mode" value="merge">
+                        <span><strong>合并导入</strong> — 保留已有数据，仅新增</span>
+                    </label>
+                </div>
+            </div>
+            <div class="form-row">
+                <label>导入内容预览</label>
+                <div id="import-preview" style="background:rgba(0,0,0,0.2);border-radius:6px;padding:10px;font-size:12px;color:var(--text-secondary);min-height:36px">
+                    请先选择文件
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-sm" onclick="hideImportModal()">取消</button>
+            <button class="btn btn-sm btn-primary" onclick="doImport()" id="import-confirm-btn" disabled>导入</button>
+        </div>
+    </div>
+</div>
+
+<!-- 加载提示 -->
+<div class="loading-overlay" id="loading-overlay" style="display:none">
+    <div class="loading-box">
+        <div class="spinner"></div>
+        <p id="loading-text">处理中...</p>
+    </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
